@@ -1,7 +1,7 @@
 const CACHE_NAME = 'malta-real-estate-v1';
 const urlsToCache = [
-  '/index.html',
-  '/manifest.json',
+  './',
+  './manifest.json',
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
@@ -67,7 +67,7 @@ self.addEventListener('fetch', event => {
           return response;
         }).catch(() => {
           // If both cache and network fail, show offline page
-          return caches.match('/index.html');
+          return caches.match('./');
         });
       })
   );
@@ -90,8 +90,8 @@ async function syncProperties() {
 self.addEventListener('push', event => {
   const options = {
     body: event.data ? event.data.text() : 'New update available!',
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
     vibrate: [200, 100, 200]
   };
 
@@ -104,6 +104,6 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   event.waitUntil(
-    clients.openWindow('/')
+    clients.openWindow('./')
   );
 });
