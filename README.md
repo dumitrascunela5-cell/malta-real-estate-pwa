@@ -1,0 +1,1 @@
+# malta-real-estate-pwa
