@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malta Real Estate PRO v6</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#1e293b">
+    <link rel="icon" type="image/png" href="./icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; }
+        .sidebar { background: #1e293b; border-right: 1px solid #334155; }
+        .card { background: #1e293b; border: 1px solid #334155; transition: all 0.2s ease; }
+        .card:hover { border-color: #475569; }
+        .tab-active { background: #1e40af; color: white; font-weight: 500; }
+        .btn-primary { background: #1e40af; color: white; transition: all 0.2s ease; }
+        .btn-primary:hover { background: #1e3a8a; }
+        .input-field { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; }
+        .input-field:focus { outline: none; border-color: #1e40af; }
+        .detail-row { display: grid; grid-template-columns: 120px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid #334155; }
+        .detail-label { color: #94a3b8; font-size: 0.875rem; }
+        .detail-value { color: #e2e8f0; font-size: 0.875rem; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        
+        const SUPABASE_URL = 'https://xevlfdjyvhhnyvxtwzsb.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhldmxmZGp5dmhobnl2eHR3enNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMDQyODgsImV4cCI6MjA4NTg4MDI4OH0.vf9y_5h7jBKLEWP3AcGx3bvKZObukIXoHYLtdY42pwM';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        // Complete list of Malta cities (excluding Gozo)
+        const MALTA_CITIES = [
+            'Valletta', 'Sliema', 'St. Julians', 'Gzira', 'Msida', 'Birkirkara', 'Qormi', 'Mosta', 
+            'Zabbar', 'Mellieha', 'St. Pauls Bay', 'Swieqi', 'Naxxar', 'Fgura', 'Zejtun', 'Hamrun',
+            'Vittoriosa', 'Cospicua', 'Senglea', 'Floriana', 'Paola', 'Tarxien', 'Marsa', 'Luqa',
+            'Gudja', 'Attard', 'Balzan', 'Lija', 'Pembroke', 'Pieta', 'Santa Venera', 'San Gwann',
+            'Iklin', 'Gharghur', 'Madliena', 'Bahar ic-Caghaq', 'Bugibba', 'Qawra', 'Marsaskala',
+            'Marsaxlokk', 'Birzebbuga', 'Ghaxaq', 'Kalkara', 'Xghajra', 'Zeitun', 'Birgu',
+            'Isla', 'Bormla', 'Dingli', 'Siggiewi', 'Rabat', 'Mtarfa', 'Bidnija', 'Burmarrad',
+            'Bahrija', 'Manikata', 'Mgarr', 'Zebbiegh', 'Mqabba', 'Kirkop', 'Safi', 'Zurrieq'
+        ].sort();
+        
+        function App() {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [properties, setProperties] = useState([]);
+            const [clients, setClients] = useState([]);
+            const [tasks, setTasks] = useState([]);
+            const [viewings, setViewings] = useState([]);
+            const [communications, setCommunications] = useState([]);
+            const [deals, setDeals] = useState([]);
+            const [notes, setNotes] = useState([]);
+            const [editingProperty, setEditingProperty] = useState(null);
+            const [editingClient, setEditingClient] = useState(null);
+            
+            // Filter states
+            const [propertyFilter, setPropertyFilter] = useState('');
+            const [clientFilter, setClientFilter] = useState('');
+            
+            const [propForm, setPropForm] = useState({ 
+                reference_number: '', type: 'Apartment', bedrooms: 1, available_from: '', 
+                price_per_month: '', negotiable: false, pet_friendly: false, location: '', notes: '' 
+            });
+            const [clientForm, setClientForm] = useState({ 
+                name: '', phone: '', looking_for: ['Apartment'], locations: ['Sliema'], 
+                moving_date: '', nationality: '', occupation: '', how_many_people: 1, pets: false, 
+                let_type: 'Long Let', budget: '', min_bedrooms: 1, max_bedrooms: 3, 
+                other_requirements: '', notes: '' 
+            });
+            
+            useEffect(() => {
+                fetchAll();
+                requestNotificationPermission();
+                checkReminders();
+                const interval = setInterval(checkReminders, 30000);
+                return () => clearInterval(interval);
+            }, []);
+            
+            async function fetchAll() {
+                const [p, c, t, v, cm, d, n] = await Promise.all([
+                    supabaseClient.from('properties').select('*').order('created_at', { ascending: false }),
+                    supabaseClient.from('clients').select('*').order('created_at', { ascending: false }),
+                    supabaseClient.from('tasks').select('*').order('due_date', { ascending: true }),
+                    supabaseClient.from('viewings').select('*, properties(*), clients(*)').order('scheduled_date', { ascending: true }),
+                    supabaseClient.from('communications').select('*, properties(*), clients(*)').order('created_at', { ascending: false }),
+                    supabaseClient.from('deals').select('*, properties(*), clients(*)').order('created_at', { ascending: false }),
+                    supabaseClient.from('daily_notes').select('*').order('created_at', { ascending: false })
+                ]);
+                if (p.data) setProperties(p.data);
+                if (c.data) setClients(c.data);
+                if (t.data) setTasks(t.data);
+                if (v.data) setViewings(v.data);
+                if (cm.data) setCommunications(cm.data);
+                if (d.data) setDeals(d.data);
+                if (n.data) setNotes(n.data);
+            }
+            
+            function requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }
+            
+            async function checkReminders() {
+                const now = new Date();
+                const { data } = await supabaseClient
+                    .from('reminders')
+                    .select('*, tasks(*), viewings(*, properties(*), clients(*))')
+                    .eq('dismissed', false)
+                    .lte('remind_at', now.toISOString());
+                
+                if (data) {
+                    data.forEach(reminder => {
+                        if (!reminder.snoozed_until || new Date(reminder.snoozed_until) <= now) {
+                            if (Notification.permission === 'granted') {
+                                new Notification(reminder.title, { body: reminder.message || '' });
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // IMPROVED MATCHING LOGIC
+            const matches = useMemo(() => {
+                let all = [];
+                properties.forEach(p => {
+                    clients.forEach(c => {
+                        const priceDiff = p.price_per_month - c.budget;
+                        let priceMatch;
+                        
+                        // Client budget is higher or equal = 100% match
+                        if (c.budget >= p.price_per_month) {
+                            priceMatch = 100;
+                        }
+                        // Property price is 100-150 EUR above budget = still good match
+                        else if (priceDiff > 0 && priceDiff <= 150) {
+                            priceMatch = 100 - (priceDiff / 150 * 30); // 70-100% match
+                        }
+                        // If negotiable and within 200 EUR
+                        else if (p.negotiable && priceDiff <= 200) {
+                            priceMatch = 80;
+                        }
+                        // Otherwise calculate proportionally
+                        else {
+                            priceMatch = Math.max(0, 100 - (Math.abs(priceDiff) / c.budget * 100));
+                        }
+                        
+                        const locMatch = c.locations.includes(p.location) ? 100 : 0;
+                        const typeMatch = c.looking_for.includes(p.type) ? 100 : 0;
+                        const bedMatch = p.bedrooms >= c.min_bedrooms && p.bedrooms <= (c.max_bedrooms || 99) ? 100 : 0;
+                        const total = (priceMatch * 0.4 + locMatch * 0.3 + typeMatch * 0.2 + bedMatch * 0.1);
+                        
+                        if (total >= 40) {
+                            all.push({ 
+                                property: p, 
+                                client: c, 
+                                scores: { 
+                                    price: Math.round(priceMatch), 
+                                    location: locMatch, 
+                                    type: typeMatch, 
+                                    beds: bedMatch, 
+                                    total: Math.round(total), 
+                                    priceDiff 
+                                } 
+                            });
+                        }
+                    });
+                });
+                return all.sort((a, b) => b.scores.total - a.scores.total);
+            }, [properties, clients]);
+            
+            async function saveProperty(e) {
+                e.preventDefault();
+                const data = { ...propForm };
+                const { error } = editingProperty 
+                    ? await supabaseClient.from('properties').update(data).eq('id', editingProperty.id)
+                    : await supabaseClient.from('properties').insert([data]);
+                if (error) return alert('❌ ' + error.message);
+                alert('✅ Property ' + (editingProperty ? 'updated' : 'added'));
+                setPropForm({ reference_number: '', type: 'Apartment', bedrooms: 1, available_from: '', price_per_month: '', negotiable: false, pet_friendly: false, location: '', notes: '' });
+                setEditingProperty(null);
+                fetchAll();
+                setActiveTab('properties');
+            }
+            
+            async function saveClient(e) {
+                e.preventDefault();
+                const data = { ...clientForm };
+                const { error } = editingClient
+                    ? await supabaseClient.from('clients').update(data).eq('id', editingClient.id)
+                    : await supabaseClient.from('clients').insert([data]);
+                if (error) return alert('❌ ' + error.message);
+                alert('✅ Client ' + (editingClient ? 'updated' : 'added'));
+                setClientForm({ name: '', phone: '', looking_for: ['Apartment'], locations: ['Sliema'], moving_date: '', nationality: '', occupation: '', how_many_people: 1, pets: false, let_type: 'Long Let', budget: '', min_bedrooms: 1, max_bedrooms: 3, other_requirements: '', notes: '' });
+                setEditingClient(null);
+                fetchAll();
+                setActiveTab('clients');
+            }
+            
+            async function deleteItem(table, id) {
+                if (!confirm('Delete?')) return;
+                await supabaseClient.from(table).delete().eq('id', id);
+                fetchAll();
+            }
+            
+            async function saveTask(title, priority, category, dueDate) {
+                await supabaseClient.from('tasks').insert([{ title, priority, category, due_date: dueDate }]);
+                await supabaseClient.from('reminders').insert([{ title: `Task: ${title}`, remind_at: dueDate, type: 'task' }]);
+                fetchAll();
+            }
+            
+            async function toggleTask(id, completed) {
+                await supabaseClient.from('tasks').update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq('id', id);
+                fetchAll();
+            }
+            
+            async function saveViewing(propId, clientId, date) {
+                const { data } = await supabaseClient.from('viewings').insert([{ property_id: propId, client_id: clientId, scheduled_date: date }]).select();
+                if (data && data[0]) {
+                    const reminderTime = new Date(new Date(date).getTime() - 60 * 60 * 1000);
+                    await supabaseClient.from('reminders').insert([{ title: `Viewing in 1 hour`, remind_at: reminderTime, type: 'viewing', viewing_id: data[0].id }]);
+                }
+                fetchAll();
+            }
+            
+            async function saveCommunication(type, content, propId, clientId) {
+                await supabaseClient.from('communications').insert([{ type, content, property_id: propId, client_id: clientId }]);
+                fetchAll();
+            }
+            
+            async function saveDeal(propId, clientId, value, commission) {
+                await supabaseClient.from('deals').insert([{ property_id: propId, client_id: clientId, deal_value: value, commission_percent: commission }]);
+                fetchAll();
+            }
+            
+            // Filter functions
+            const filteredProperties = useMemo(() => {
+                if (!propertyFilter.trim()) return properties;
+                const filter = propertyFilter.toLowerCase();
+                return properties.filter(p => 
+                    p.reference_number?.toLowerCase().includes(filter) ||
+                    p.location?.toLowerCase().includes(filter) ||
+                    p.type?.toLowerCase().includes(filter) ||
+                    p.price_per_month?.toString().includes(filter) ||
+                    p.notes?.toLowerCase().includes(filter)
+                );
+            }, [properties, propertyFilter]);
+            
+            const filteredClients = useMemo(() => {
+                if (!clientFilter.trim()) return clients;
+                const filter = clientFilter.toLowerCase();
+                return clients.filter(c => 
+                    c.name?.toLowerCase().includes(filter) ||
+                    c.phone?.includes(filter) ||
+                    c.nationality?.toLowerCase().includes(filter) ||
+                    c.occupation?.toLowerCase().includes(filter) ||
+                    c.budget?.toString().includes(filter) ||
+                    c.locations?.some(loc => loc.toLowerCase().includes(filter)) ||
+                    c.notes?.toLowerCase().includes(filter)
+                );
+            }, [clients, clientFilter]);
+            
+            return (
+                <div className="flex h-screen">
+                    {/* Sidebar */}
+                    <div className="sidebar w-64 flex-shrink-0 p-4 overflow-y-auto">
+                        <div className="mb-6">
+                            <h1 className="text-2xl font-bold text-blue-400">Malta RE PRO</h1>
+                        </div>
+                        <nav className="space-y-2">
+                            {['dashboard', 'add-property', 'properties', 'add-client', 'clients', 'tasks', 'viewings', 'communications', 'matches', 'deals', 'stats'].map(tab => (
+                                <button key={tab} onClick={() => setActiveTab(tab)} className={`w-full p-3 rounded text-left ${activeTab === tab ? 'tab-active' : 'hover:bg-slate-700'}`}>
+                                    {tab.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+                    
+                    {/* Main */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                        {activeTab === 'dashboard' && <Dashboard properties={properties} clients={clients} tasks={tasks} viewings={viewings} deals={deals} notes={notes} />}
+                        {activeTab === 'add-property' && <AddProperty form={propForm} setForm={setPropForm} save={saveProperty} editing={editingProperty} setEditing={setEditingProperty} />}
+                        {activeTab === 'properties' && <Properties items={filteredProperties} filter={propertyFilter} setFilter={setPropertyFilter} onEdit={p => { setEditingProperty(p); setPropForm(p); setActiveTab('add-property'); }} onDelete={id => deleteItem('properties', id)} />}
+                        {activeTab === 'add-client' && <AddClient form={clientForm} setForm={setClientForm} save={saveClient} editing={editingClient} setEditing={setEditingClient} />}
+                        {activeTab === 'clients' && <Clients items={filteredClients} filter={clientFilter} setFilter={setClientFilter} onEdit={c => { setEditingClient(c); setClientForm(c); setActiveTab('add-client'); }} onDelete={id => deleteItem('clients', id)} onLog={saveCommunication} />}
+                        {activeTab === 'tasks' && <Tasks items={tasks} onSave={saveTask} onToggle={toggleTask} onDelete={id => deleteItem('tasks', id)} />}
+                        {activeTab === 'viewings' && <Viewings items={viewings} properties={properties} clients={clients} onSave={saveViewing} />}
+                        {activeTab === 'communications' && <Communications items={communications} />}
+                        {activeTab === 'matches' && <Matches items={matches} />}
+                        {activeTab === 'deals' && <Deals items={deals} properties={properties} clients={clients} onSave={saveDeal} />}
+                        {activeTab === 'stats' && <Stats properties={properties} clients={clients} deals={deals} />}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Dashboard({ properties, clients, tasks, viewings, deals, notes }) {
+            const todayTasks = tasks.filter(t => !t.completed && new Date(t.due_date) <= new Date(Date.now() + 86400000));
+            const todayViewings = viewings.filter(v => v.status === 'scheduled' && new Date(v.scheduled_date).toDateString() === new Date().toDateString());
+            return (
+                <div className="space-y-6">
+                    <h2 className="text-3xl font-bold">Dashboard</h2>
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-3xl font-bold text-blue-400">{properties.length}</div>
+                            <div className="text-sm text-gray-400">Properties</div>
+                        </div>
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-3xl font-bold text-blue-400">{clients.length}</div>
+                            <div className="text-sm text-gray-400">Clients</div>
+                        </div>
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-3xl font-bold text-blue-400">{todayTasks.length}</div>
+                            <div className="text-sm text-gray-400">Tasks Today</div>
+                        </div>
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-3xl font-bold text-blue-400">{todayViewings.length}</div>
+                            <div className="text-sm text-gray-400">Viewings Today</div>
+                        </div>
+                    </div>
+                    {todayTasks.length > 0 && (
+                        <div className="card p-4 rounded-lg">
+                            <h3 className="font-bold mb-2">Tasks Due Today</h3>
+                            {todayTasks.map(t => <div key={t.id} className="text-sm py-1">• {t.title}</div>)}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        
+        function AddProperty({ form, setForm, save, editing, setEditing }) {
+            return (
+                <div className="max-w-2xl">
+                    <h2 className="text-3xl font-bold mb-6">{editing ? 'Edit' : 'Add'} Property</h2>
+                    <form onSubmit={save} className="space-y-4">
+                        <input required value={form.reference_number} onChange={e => setForm({...form, reference_number: e.target.value})} placeholder="REF-001" className="input-field w-full p-3 rounded" />
+                        <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="input-field w-full p-3 rounded">
+                            {['Apartment', 'Penthouse', 'House', 'Duplex', 'Studio', 'Maisonette', 'Villa', 'Townhouse', 'Farmhouse'].map(t => <option key={t}>{t}</option>)}
+                        </select>
+                        <input required type="number" value={form.bedrooms} onChange={e => setForm({...form, bedrooms: parseInt(e.target.value)})} placeholder="Bedrooms" className="input-field w-full p-3 rounded" />
+                        <input required type="date" value={form.available_from} onChange={e => setForm({...form, available_from: e.target.value})} className="input-field w-full p-3 rounded" />
+                        <input required type="number" value={form.price_per_month} onChange={e => setForm({...form, price_per_month: e.target.value})} placeholder="Price €" className="input-field w-full p-3 rounded" />
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={form.negotiable} onChange={e => setForm({...form, negotiable: e.target.checked})} /> 
+                            Negotiable
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={form.pet_friendly} onChange={e => setForm({...form, pet_friendly: e.target.checked})} /> 
+                            Pet Friendly
+                        </label>
+                        <input required list="cities" value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="Location" className="input-field w-full p-3 rounded" />
+                        <datalist id="cities">{MALTA_CITIES.map(c => <option key={c} value={c} />)}</datalist>
+                        <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Notes" className="input-field w-full p-3 rounded" rows="3" />
+                        <div className="flex gap-2">
+                            <button type="submit" className="btn-primary px-6 py-3 rounded font-semibold">{editing ? 'Update' : 'Add'}</button>
+                            {editing && <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 rounded bg-gray-600">Cancel</button>}
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+        
+        function Properties({ items, filter, setFilter, onEdit, onDelete }) {
+            const [viewingLogs, setViewingLogs] = useState(null);
+            const [propLogs, setPropLogs] = useState([]);
+            
+            async function loadPropertyLogs(propId) {
+                const { data } = await supabaseClient.from('communications').select('*').eq('property_id', propId).order('created_at', { ascending: false });
+                setPropLogs(data || []);
+                setViewingLogs(propId);
+            }
+            
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold">Properties ({items.length})</h2>
+                        <input 
+                            value={filter} 
+                            onChange={e => setFilter(e.target.value)} 
+                            placeholder="Search properties..." 
+                            className="input-field px-4 py-2 rounded w-80"
+                        />
+                    </div>
+                    <div className="grid gap-4">
+                        {items.map(p => (
+                            <div key={p.id} className="card p-4 rounded-lg">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-bold text-lg">{p.reference_number}</span>
+                                        <span className="text-blue-400 font-bold">€{p.price_per_month}/mo</span>
+                                        {p.negotiable && <span className="text-xs px-2 py-1 rounded bg-green-700">Negotiable</span>}
+                                        {p.pet_friendly && <span className="text-xs px-2 py-1 rounded bg-blue-700">Pet OK</span>}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => onEdit(p)} className="px-3 py-1 bg-blue-600 rounded text-sm">Edit</button>
+                                        <button onClick={() => onDelete(p.id)} className="px-3 py-1 bg-red-600 rounded text-sm">Delete</button>
+                                    </div>
+                                </div>
+                                
+                                {/* Full Details */}
+                                <div className="space-y-1">
+                                    <div className="detail-row">
+                                        <div className="detail-label">Type:</div>
+                                        <div className="detail-value">{p.type}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Bedrooms:</div>
+                                        <div className="detail-value">{p.bedrooms}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Location:</div>
+                                        <div className="detail-value">{p.location}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Available From:</div>
+                                        <div className="detail-value">{new Date(p.available_from).toLocaleDateString()}</div>
+                                    </div>
+                                    {p.notes && (
+                                        <div className="detail-row">
+                                            <div className="detail-label">Notes:</div>
+                                            <div className="detail-value">{p.notes}</div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <button onClick={() => loadPropertyLogs(p.id)} className="mt-3 px-3 py-1 bg-slate-600 rounded text-sm">View Logs</button>
+                                
+                                {viewingLogs === p.id && (
+                                    <div className="mt-4 p-3 bg-slate-800 rounded">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-bold">Communication Logs</h4>
+                                            <button onClick={() => setViewingLogs(null)} className="text-gray-400">×</button>
+                                        </div>
+                                        {propLogs.length === 0 ? (
+                                            <div className="text-sm text-gray-400">No logs yet</div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                {propLogs.map(log => (
+                                                    <div key={log.id} className="p-2 bg-slate-700 rounded text-sm">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span>{log.type === 'call' ? '📞' : log.type === 'message' ? '💬' : '📧'}</span>
+                                                            <span className="text-gray-400 text-xs">{new Date(log.created_at).toLocaleString()}</span>
+                                                        </div>
+                                                        <div>{log.content}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function AddClient({ form, setForm, save, editing, setEditing }) {
+            const propertyTypes = ['Apartment', 'Penthouse', 'House', 'Duplex', 'Studio', 'Maisonette', 'Villa', 'Townhouse', 'Farmhouse'];
+            return (
+                <div className="max-w-2xl">
+                    <h2 className="text-3xl font-bold mb-6">{editing ? 'Edit' : 'Add'} Client</h2>
+                    <form onSubmit={save} className="space-y-4">
+                        <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Name" className="input-field w-full p-3 rounded" />
+                        <input required type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+356..." className="input-field w-full p-3 rounded" />
+                        
+                        <div>
+                            <label className="text-sm text-gray-400 mb-1 block">Looking for (Property Types):</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {propertyTypes.map(type => (
+                                    <label key={type} className="flex items-center gap-2 text-sm">
+                                        <input type="checkbox" checked={form.looking_for.includes(type)} onChange={e => {
+                                            if (e.target.checked) setForm({...form, looking_for: [...form.looking_for, type]});
+                                            else setForm({...form, looking_for: form.looking_for.filter(t => t !== type)});
+                                        }} />
+                                        {type}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label className="text-sm text-gray-400 mb-1 block">Preferred Locations:</label>
+                            <input list="cities" placeholder="Type to add city..." className="input-field w-full p-2 rounded mb-2" onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const city = e.target.value.trim();
+                                    if (city && !form.locations.includes(city)) {
+                                        setForm({...form, locations: [...form.locations, city]});
+                                        e.target.value = '';
+                                    }
+                                }
+                            }} />
+                            <datalist id="cities">{MALTA_CITIES.map(c => <option key={c} value={c} />)}</datalist>
+                            <div className="flex flex-wrap gap-2">
+                                {form.locations.map(loc => (
+                                    <span key={loc} className="px-2 py-1 bg-blue-700 rounded text-sm flex items-center gap-1">
+                                        {loc}
+                                        <button type="button" onClick={() => setForm({...form, locations: form.locations.filter(l => l !== loc)})} className="text-red-300">×</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <input required type="date" value={form.moving_date} onChange={e => setForm({...form, moving_date: e.target.value})} placeholder="Moving Date" className="input-field w-full p-3 rounded" />
+                        <input value={form.nationality} onChange={e => setForm({...form, nationality: e.target.value})} placeholder="Nationality" className="input-field w-full p-3 rounded" />
+                        <input value={form.occupation} onChange={e => setForm({...form, occupation: e.target.value})} placeholder="Occupation" className="input-field w-full p-3 rounded" />
+                        <input type="number" value={form.how_many_people} onChange={e => setForm({...form, how_many_people: parseInt(e.target.value)})} placeholder="How many people" className="input-field w-full p-3 rounded" />
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm text-gray-400 mb-1 block">Min Bedrooms:</label>
+                                <input type="number" value={form.min_bedrooms} onChange={e => setForm({...form, min_bedrooms: parseInt(e.target.value)})} className="input-field w-full p-2 rounded" />
+                            </div>
+                            <div>
+                                <label className="text-sm text-gray-400 mb-1 block">Max Bedrooms:</label>
+                                <input type="number" value={form.max_bedrooms} onChange={e => setForm({...form, max_bedrooms: parseInt(e.target.value)})} className="input-field w-full p-2 rounded" />
+                            </div>
+                        </div>
+                        
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={form.pets} onChange={e => setForm({...form, pets: e.target.checked})} />
+                            Has Pets
+                        </label>
+                        
+                        <div>
+                            <label className="text-sm text-gray-400 mb-1 block">Let Type:</label>
+                            <select value={form.let_type} onChange={e => setForm({...form, let_type: e.target.value})} className="input-field w-full p-3 rounded">
+                                <option>Long Let</option>
+                                <option>Short Let</option>
+                            </select>
+                        </div>
+                        
+                        <input required type="number" value={form.budget} onChange={e => setForm({...form, budget: e.target.value})} placeholder="Budget €" className="input-field w-full p-3 rounded" />
+                        <textarea value={form.other_requirements} onChange={e => setForm({...form, other_requirements: e.target.value})} placeholder="Other Requirements" className="input-field w-full p-3 rounded" rows="2" />
+                        <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Notes" className="input-field w-full p-3 rounded" rows="3" />
+                        
+                        <div className="flex gap-2">
+                            <button type="submit" className="btn-primary px-6 py-3 rounded font-semibold">{editing ? 'Update' : 'Add'}</button>
+                            {editing && <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 rounded bg-gray-600">Cancel</button>}
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+        
+        function Clients({ items, filter, setFilter, onEdit, onDelete, onLog }) {
+            const [selectedClient, setSelectedClient] = useState(null);
+            const [viewingLogs, setViewingLogs] = useState(null);
+            const [clientLogs, setClientLogs] = useState([]);
+            
+            async function loadClientLogs(clientId) {
+                const { data } = await supabaseClient.from('communications').select('*').eq('client_id', clientId).order('created_at', { ascending: false });
+                setClientLogs(data || []);
+                setViewingLogs(clientId);
+            }
+            
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold">Clients ({items.length})</h2>
+                        <input 
+                            value={filter} 
+                            onChange={e => setFilter(e.target.value)} 
+                            placeholder="Search clients..." 
+                            className="input-field px-4 py-2 rounded w-80"
+                        />
+                    </div>
+                    <div className="grid gap-4">
+                        {items.map(c => (
+                            <div key={c.id} className="card p-4 rounded-lg">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-bold text-lg">{c.name}</span>
+                                        <span className="text-blue-400 font-bold">€{c.budget}</span>
+                                        {c.pets && <span className="text-xs px-2 py-1 rounded bg-blue-700">Has Pets</span>}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => onEdit(c)} className="px-3 py-1 bg-blue-600 rounded text-sm">Edit</button>
+                                        <button onClick={() => onDelete(c.id)} className="px-3 py-1 bg-red-600 rounded text-sm">Delete</button>
+                                    </div>
+                                </div>
+                                
+                                {/* Full Details */}
+                                <div className="space-y-1">
+                                    <div className="detail-row">
+                                        <div className="detail-label">Phone:</div>
+                                        <div className="detail-value">{c.phone}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Looking for:</div>
+                                        <div className="detail-value">{c.looking_for?.join(', ')}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Locations:</div>
+                                        <div className="detail-value">{c.locations?.join(', ')}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Bedrooms:</div>
+                                        <div className="detail-value">{c.min_bedrooms}-{c.max_bedrooms}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Moving Date:</div>
+                                        <div className="detail-value">{new Date(c.moving_date).toLocaleDateString()}</div>
+                                    </div>
+                                    {c.nationality && (
+                                        <div className="detail-row">
+                                            <div className="detail-label">Nationality:</div>
+                                            <div className="detail-value">{c.nationality}</div>
+                                        </div>
+                                    )}
+                                    {c.occupation && (
+                                        <div className="detail-row">
+                                            <div className="detail-label">Occupation:</div>
+                                            <div className="detail-value">{c.occupation}</div>
+                                        </div>
+                                    )}
+                                    <div className="detail-row">
+                                        <div className="detail-label">People:</div>
+                                        <div className="detail-value">{c.how_many_people}</div>
+                                    </div>
+                                    <div className="detail-row">
+                                        <div className="detail-label">Let Type:</div>
+                                        <div className="detail-value">{c.let_type}</div>
+                                    </div>
+                                    {c.other_requirements && (
+                                        <div className="detail-row">
+                                            <div className="detail-label">Requirements:</div>
+                                            <div className="detail-value">{c.other_requirements}</div>
+                                        </div>
+                                    )}
+                                    {c.notes && (
+                                        <div className="detail-row">
+                                            <div className="detail-label">Notes:</div>
+                                            <div className="detail-value">{c.notes}</div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="flex gap-2 mt-3">
+                                    <a href={`tel:${c.phone}`} className="px-3 py-1 bg-green-600 rounded text-sm">Call</a>
+                                    <a href={`https://wa.me/${c.phone.replace(/[^0-9]/g, '')}`} target="_blank" className="px-3 py-1 bg-green-600 rounded text-sm">WhatsApp</a>
+                                    <button onClick={() => setSelectedClient(c)} className="px-3 py-1 bg-slate-600 rounded text-sm">Add Log</button>
+                                    <button onClick={() => loadClientLogs(c.id)} className="px-3 py-1 bg-slate-600 rounded text-sm">View Logs</button>
+                                </div>
+                                
+                                {selectedClient?.id === c.id && (
+                                    <div className="mt-4 p-3 bg-slate-800 rounded">
+                                        <select className="input-field p-2 rounded mb-2" id={`logType${c.id}`}>
+                                            <option>call</option>
+                                            <option>message</option>
+                                            <option>email</option>
+                                        </select>
+                                        <textarea id={`logContent${c.id}`} placeholder="Notes..." className="input-field w-full p-2 rounded mb-2" />
+                                        <button onClick={() => { 
+                                            onLog(document.getElementById(`logType${c.id}`).value, document.getElementById(`logContent${c.id}`).value, null, c.id); 
+                                            setSelectedClient(null); 
+                                        }} className="btn-primary px-4 py-2 rounded">Save Log</button>
+                                    </div>
+                                )}
+                                
+                                {viewingLogs === c.id && (
+                                    <div className="mt-4 p-3 bg-slate-800 rounded">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-bold">Communication Logs</h4>
+                                            <button onClick={() => setViewingLogs(null)} className="text-gray-400">×</button>
+                                        </div>
+                                        {clientLogs.length === 0 ? (
+                                            <div className="text-sm text-gray-400">No logs yet</div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                {clientLogs.map(log => (
+                                                    <div key={log.id} className="p-2 bg-slate-700 rounded text-sm">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span>{log.type === 'call' ? '📞' : log.type === 'message' ? '💬' : '📧'}</span>
+                                                            <span className="text-gray-400 text-xs">{new Date(log.created_at).toLocaleString()}</span>
+                                                        </div>
+                                                        <div>{log.content}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Tasks({ items, onSave, onToggle, onDelete }) {
+            const [showForm, setShowForm] = useState(false);
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold">Tasks ({items.filter(t => !t.completed).length})</h2>
+                        <button onClick={() => setShowForm(!showForm)} className="btn-primary px-4 py-2 rounded">Add Task</button>
+                    </div>
+                    
+                    {showForm && (
+                        <div className="card p-4 rounded-lg mb-4">
+                            <input id="taskTitle" placeholder="Task title..." className="input-field w-full p-2 rounded mb-2" />
+                            <div className="grid grid-cols-3 gap-2 mb-2">
+                                <select id="taskPriority" className="input-field p-2 rounded">
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                </select>
+                                <select id="taskCategory" className="input-field p-2 rounded">
+                                    <option value="follow-up">Follow-up</option>
+                                    <option value="viewing">Viewing</option>
+                                    <option value="contract">Contract</option>
+                                    <option value="general">General</option>
+                                </select>
+                                <input type="datetime-local" id="taskDue" className="input-field p-2 rounded" />
+                            </div>
+                            <button onClick={() => {
+                                const title = document.getElementById('taskTitle').value;
+                                const priority = document.getElementById('taskPriority').value;
+                                const category = document.getElementById('taskCategory').value;
+                                const due = document.getElementById('taskDue').value;
+                                if (title && due) {
+                                    onSave(title, priority, category, new Date(due).toISOString());
+                                    setShowForm(false);
+                                    document.getElementById('taskTitle').value = '';
+                                }
+                            }} className="btn-primary px-4 py-2 rounded">Save Task</button>
+                        </div>
+                    )}
+                    
+                    <div className="space-y-2">
+                        {items.map(t => (
+                            <div key={t.id} className={`card p-3 rounded-lg flex justify-between items-center ${t.completed ? 'opacity-50' : ''}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="checkbox" checked={t.completed} onChange={e => onToggle(t.id, e.target.checked)} />
+                                    <div>
+                                        <div className={t.completed ? 'line-through' : ''}>{t.title}</div>
+                                        <div className="text-xs text-gray-400">
+                                            {new Date(t.due_date).toLocaleString()} • {t.category} • {t.priority}
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => onDelete(t.id)} className="px-2 py-1 bg-red-600 rounded text-sm">Delete</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Viewings({ items, properties, clients, onSave }) {
+            const [showForm, setShowForm] = useState(false);
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold">Viewings ({items.filter(v => v.status === 'scheduled').length})</h2>
+                        <button onClick={() => setShowForm(!showForm)} className="btn-primary px-4 py-2 rounded">Schedule Viewing</button>
+                    </div>
+                    
+                    {showForm && (
+                        <div className="card p-4 rounded-lg mb-4">
+                            <select id="viewProp" className="input-field w-full p-2 rounded mb-2">
+                                <option value="">Select Property</option>
+                                {properties.map(p => <option key={p.id} value={p.id}>{p.reference_number} - {p.location}</option>)}
+                            </select>
+                            <select id="viewClient" className="input-field w-full p-2 rounded mb-2">
+                                <option value="">Select Client</option>
+                                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <input type="datetime-local" id="viewDate" className="input-field w-full p-2 rounded mb-2" />
+                            <button onClick={() => {
+                                const propId = document.getElementById('viewProp').value;
+                                const clientId = document.getElementById('viewClient').value;
+                                const date = document.getElementById('viewDate').value;
+                                if (propId && clientId && date) {
+                                    onSave(propId, clientId, new Date(date).toISOString());
+                                    setShowForm(false);
+                                }
+                            }} className="btn-primary px-4 py-2 rounded">Schedule</button>
+                        </div>
+                    )}
+                    
+                    <div className="space-y-2">
+                        {items.map(v => (
+                            <div key={v.id} className="card p-3 rounded-lg">
+                                <div className="font-bold">{v.properties?.reference_number} - {v.clients?.name}</div>
+                                <div className="text-sm text-gray-400">{new Date(v.scheduled_date).toLocaleString()}</div>
+                                <div className="text-xs text-blue-400">{v.status}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Communications({ items }) {
+            return (
+                <div>
+                    <h2 className="text-3xl font-bold mb-6">Communications ({items.length})</h2>
+                    <div className="space-y-2">
+                        {items.map(comm => (
+                            <div key={comm.id} className="card p-3 rounded-lg">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span>{comm.type === 'call' ? '📞' : comm.type === 'message' ? '💬' : '📧'}</span>
+                                    <span className="text-sm text-gray-400">{new Date(comm.created_at).toLocaleString()}</span>
+                                </div>
+                                <div className="text-sm">{comm.content}</div>
+                                {comm.clients && <div className="text-xs text-blue-400 mt-1">Client: {comm.clients.name}</div>}
+                                {comm.properties && <div className="text-xs text-blue-400 mt-1">Property: {comm.properties.reference_number}</div>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Matches({ items }) {
+            return (
+                <div>
+                    <h2 className="text-3xl font-bold mb-6">Smart Matches ({items.length})</h2>
+                    <div className="space-y-3">
+                        {items.map((match, idx) => (
+                            <div key={idx} className="card p-4 rounded-lg">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <div className="font-bold text-lg">
+                                            {match.property.reference_number} ↔ {match.client.name}
+                                        </div>
+                                        <div className="text-sm text-gray-400">
+                                            {match.property.type}, {match.property.bedrooms} beds, {match.property.location}
+                                        </div>
+                                    </div>
+                                    <div className="text-2xl font-bold text-blue-400">{match.scores.total}%</div>
+                                </div>
+                                
+                                <div className="grid grid-cols-4 gap-2 text-sm">
+                                    <div>
+                                        <div className="text-gray-400">Price</div>
+                                        <div className="font-bold">{match.scores.price}%</div>
+                                        <div className="text-xs text-gray-500">
+                                            {match.scores.priceDiff > 0 ? `+€${match.scores.priceDiff}` : 
+                                             match.scores.priceDiff < 0 ? `-€${Math.abs(match.scores.priceDiff)}` : 'Exact'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-400">Location</div>
+                                        <div className="font-bold">{match.scores.location}%</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-400">Type</div>
+                                        <div className="font-bold">{match.scores.type}%</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-400">Beds</div>
+                                        <div className="font-bold">{match.scores.beds}%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Deals({ items, properties, clients, onSave }) {
+            const [showForm, setShowForm] = useState(false);
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold">Deals ({items.filter(d => d.status === 'closed').length} closed)</h2>
+                        <button onClick={() => setShowForm(!showForm)} className="btn-primary px-4 py-2 rounded">Add Deal</button>
+                    </div>
+                    
+                    {showForm && (
+                        <div className="card p-4 rounded-lg mb-4">
+                            <select id="dealProp" className="input-field w-full p-2 rounded mb-2">
+                                <option value="">Select Property</option>
+                                {properties.map(p => <option key={p.id} value={p.id}>{p.reference_number}</option>)}
+                            </select>
+                            <select id="dealClient" className="input-field w-full p-2 rounded mb-2">
+                                <option value="">Select Client</option>
+                                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <input type="number" id="dealValue" placeholder="Deal Value €" className="input-field w-full p-2 rounded mb-2" />
+                            <input type="number" id="dealComm" placeholder="Commission %" defaultValue="5" className="input-field w-full p-2 rounded mb-2" />
+                            <button onClick={() => {
+                                const propId = document.getElementById('dealProp').value;
+                                const clientId = document.getElementById('dealClient').value;
+                                const value = document.getElementById('dealValue').value;
+                                const comm = document.getElementById('dealComm').value;
+                                if (propId && clientId && value && comm) {
+                                    onSave(propId, clientId, parseFloat(value), parseFloat(comm));
+                                    setShowForm(false);
+                                }
+                            }} className="btn-primary px-4 py-2 rounded">Save Deal</button>
+                        </div>
+                    )}
+                    
+                    <div className="space-y-2">
+                        {items.map(d => (
+                            <div key={d.id} className="card p-3 rounded-lg">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <div className="font-bold">{d.properties?.reference_number} - {d.clients?.name}</div>
+                                        <div className="text-sm">Value: €{d.deal_value}</div>
+                                        <div className="text-sm text-blue-400">Commission: €{d.commission_amount} ({d.commission_percent}%)</div>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded text-xs ${d.status === 'closed' ? 'bg-green-700' : 'bg-yellow-700'}`}>
+                                        {d.status}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        function Stats({ properties, clients, deals }) {
+            const totalDeals = deals.filter(d => d.status === 'closed').reduce((sum, d) => sum + parseFloat(d.deal_value || 0), 0);
+            const totalCommission = deals.filter(d => d.status === 'closed').reduce((sum, d) => sum + parseFloat(d.commission_amount || 0), 0);
+            
+            return (
+                <div>
+                    <h2 className="text-3xl font-bold mb-6">Statistics</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-2xl font-bold text-blue-400">€{totalDeals.toFixed(2)}</div>
+                            <div className="text-sm text-gray-400">Total Deals Value</div>
+                        </div>
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-2xl font-bold text-green-400">€{totalCommission.toFixed(2)}</div>
+                            <div className="text-sm text-gray-400">Total Commission</div>
+                        </div>
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-2xl font-bold text-blue-400">{properties.length}</div>
+                            <div className="text-sm text-gray-400">Total Properties</div>
+                        </div>
+                        <div className="card p-4 rounded-lg">
+                            <div className="text-2xl font-bold text-blue-400">{clients.length}</div>
+                            <div className="text-sm text-gray-400">Total Clients</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
