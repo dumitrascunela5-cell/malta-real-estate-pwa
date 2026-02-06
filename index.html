@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malta Real Estate PRO</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#f97316">
+    <link rel="icon" type="image/png" href="./icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Malta RE">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            font-family: 'Outfit', sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .glass { 
+            background: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(20px); 
+            border: 1px solid rgba(255,255,255,0.5);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .tab-active { 
+            border-bottom: 3px solid #f97316; 
+            color: #f97316; 
+            font-weight: 700; 
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(249, 115, 22, 0.6);
+        }
+        
+        .card {
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+        }
+        
+        .install-banner {
+            animation: slideDown 0.5s ease-out;
+        }
+        
+        @keyframes slideDown {
+            from { 
+                transform: translateY(-100%); 
+                opacity: 0;
+            }
+            to { 
+                transform: translateY(0); 
+                opacity: 1;
+            }
+        }
+        
+        .loading-spinner {
+            border: 3px solid rgba(249, 115, 22, 0.2);
+            border-top: 3px solid #f97316;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #f97316;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // ===== CONFIGURARE SUPABASE =====
+        const SUPABASE_URL = 'https://xevlfdjyvhhnyvxtwzsb.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhldmxmZGp5dmhobnl2eHR3enNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMDQyODgsImV4cCI6MjA4NTg4MDI4OH0.vf9y_5h7jBKLEWP3AcGx3bvKZObukIXoHYLtdY42pwM';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // ===== COMPONENTA PRINCIPALĂ =====
+        function App() {
+            const [activeTab, setActiveTab] = useState('properties');
+            const [items, setItems] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [editingItem, setEditingItem] = useState(null);
+            const [showInstallBanner, setShowInstallBanner] = useState(false);
+            const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+            // Form States pentru Properties
+            const [propForm, setPropForm] = useState({
+                title: '',
+                price: '',
+                location: '',
+                type: 'Apartment',
+                bedrooms: 1,
+                bathrooms: 1,
+                size_sqm: '',
+                description: '',
+                owner_name: '',
+                owner_contact: ''
+            });
+
+            // Form States pentru Clients
+            const [clientForm, setClientForm] = useState({
+                name: '',
+                phone: '',
+                looking_for: 'Apartment',
+                preferred_location: '',
+                budget: '',
+                min_bedrooms: 1,
+                max_bedrooms: 3,
+                notes: ''
+            });
+
+            // Form States pentru Daily Notes
+            const [noteForm, setNoteForm] = useState({
+                content: ''
+            });
+
+            // ===== PWA INSTALL PROMPT =====
+            useEffect(() => {
+                const handleBeforeInstallPrompt = (e) => {
+                    e.preventDefault();
+                    setDeferredPrompt(e);
+                    setTimeout(() => setShowInstallBanner(true), 3000);
+                };
+
+                window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+                return () => {
+                    window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+                };
+            }, []);
+
+            const handleInstallClick = async () => {
+                if (!deferredPrompt) {
+                    alert('Aplicația este deja instalată sau browserul nu suportă instalarea.');
+                    return;
+                }
+
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                
+                if (outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                }
+                
+                setDeferredPrompt(null);
+                setShowInstallBanner(false);
+            };
+
+            // ===== FETCH DATA =====
+            useEffect(() => {
+                fetchData();
+            }, [activeTab]);
+
+            async function fetchData() {
+                setLoading(true);
+                try {
+                    const { data, error } = await supabaseClient
+                        .from(activeTab)
+                        .select('*')
+                        .order('created_at', { ascending: false });
+                    
+                    if (error) throw error;
+                    setItems(data || []);
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    alert('Eroare la încărcarea datelor: ' + error.message);
+                }
+                setLoading(false);
+                setTimeout(() => lucide.createIcons(), 100);
+            }
+
+            // ===== CRUD OPERATIONS =====
+            async function handleSaveProperty(e) {
+                e.preventDefault();
+                try {
+                    if (editingItem) {
+                        const { error } = await supabaseClient
+                            .from('properties')
+                            .update(propForm)
+                            .eq('id', editingItem.id);
+                        
+                        if (error) throw error;
+                        alert('✅ Proprietate actualizată!');
+                    } else {
+                        const { error } = await supabaseClient
+                            .from('properties')
+                            .insert([propForm]);
+                        
+                        if (error) throw error;
+                        alert('✅ Proprietate adăugată!');
+                    }
+                    
+                    resetPropertyForm();
+                    setEditingItem(null);
+                    fetchData();
+                } catch (error) {
+                    console.error('Error saving property:', error);
+                    alert('❌ Eroare: ' + error.message);
+                }
+            }
+
+            async function handleSaveClient(e) {
+                e.preventDefault();
+                try {
+                    if (editingItem) {
+                        const { error } = await supabaseClient
+                            .from('clients')
+                            .update(clientForm)
+                            .eq('id', editingItem.id);
+                        
+                        if (error) throw error;
+                        alert('✅ Client actualizat!');
+                    } else {
+                        const { error } = await supabaseClient
+                            .from('clients')
+                            .insert([clientForm]);
+                        
+                        if (error) throw error;
+                        alert('✅ Client adăugat!');
+                    }
+                    
+                    resetClientForm();
+                    setEditingItem(null);
+                    fetchData();
+                } catch (error) {
+                    console.error('Error saving client:', error);
+                    alert('❌ Eroare: ' + error.message);
+                }
+            }
+
+            async function handleSaveNote(e) {
+                e.preventDefault();
+                try {
+                    if (editingItem) {
+                        const { error } = await supabaseClient
+                            .from('daily_notes')
+                            .update(noteForm)
+                            .eq('id', editingItem.id);
+                        
+                        if (error) throw error;
+                        alert('✅ Notă actualizată!');
+                    } else {
+                        const { error } = await supabaseClient
+                            .from('daily_notes')
+                            .insert([noteForm]);
+                        
+                        if (error) throw error;
+                        alert('✅ Notă adăugată!');
+                    }
+                    
+                    resetNoteForm();
+                    setEditingItem(null);
+                    fetchData();
+                } catch (error) {
+                    console.error('Error saving note:', error);
+                    alert('❌ Eroare: ' + error.message);
+                }
+            }
+
+            async function handleDelete(id) {
+                if (!confirm('Sigur vrei să ștergi acest element?')) return;
+                
+                try {
+                    const { error } = await supabaseClient
+                        .from(activeTab)
+                        .delete()
+                        .eq('id', id);
+                    
+                    if (error) throw error;
+                    alert('✅ Șters cu succes!');
+                    fetchData();
+                } catch (error) {
+                    console.error('Error deleting:', error);
+                    alert('❌ Eroare la ștergere: ' + error.message);
+                }
+            }
+
+            // ===== EDIT HANDLERS =====
+            function startEdit(item) {
+                setEditingItem(item);
+                
+                if (activeTab === 'properties') {
+                    setPropForm({
+                        title: item.title || '',
+                        price: item.price || '',
+                        location: item.location || '',
+                        type: item.type || 'Apartment',
+                        bedrooms: item.bedrooms || 1,
+                        bathrooms: item.bathrooms || 1,
+                        size_sqm: item.size_sqm || '',
+                        description: item.description || '',
+                        owner_name: item.owner_name || '',
+                        owner_contact: item.owner_contact || ''
+                    });
+                } else if (activeTab === 'clients') {
+                    setClientForm({
+                        name: item.name || '',
+                        phone: item.phone || '',
+                        looking_for: item.looking_for || 'Apartment',
+                        preferred_location: item.preferred_location || '',
+                        budget: item.budget || '',
+                        min_bedrooms: item.min_bedrooms || 1,
+                        max_bedrooms: item.max_bedrooms || 3,
+                        notes: item.notes || ''
+                    });
+                } else if (activeTab === 'daily_notes') {
+                    setNoteForm({
+                        content: item.content || ''
+                    });
+                }
+                
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            function cancelEdit() {
+                setEditingItem(null);
+                if (activeTab === 'properties') resetPropertyForm();
+                else if (activeTab === 'clients') resetClientForm();
+                else if (activeTab === 'daily_notes') resetNoteForm();
+            }
+
+            // ===== RESET FORMS =====
+            function resetPropertyForm() {
+                setPropForm({
+                    title: '',
+                    price: '',
+                    location: '',
+                    type: 'Apartment',
+                    bedrooms: 1,
+                    bathrooms: 1,
+                    size_sqm: '',
+                    description: '',
+                    owner_name: '',
+                    owner_contact: ''
+                });
+            }
+
+            function resetClientForm() {
+                setClientForm({
+                    name: '',
+                    phone: '',
+                    looking_for: 'Apartment',
+                    preferred_location: '',
+                    budget: '',
+                    min_bedrooms: 1,
+                    max_bedrooms: 3,
+                    notes: ''
+                });
+            }
+
+            function resetNoteForm() {
+                setNoteForm({ content: '' });
+            }
+
+            // ===== FORMAT HELPERS =====
+            function formatPrice(price) {
+                return new Intl.NumberFormat('en-MT', { 
+                    style: 'currency', 
+                    currency: 'EUR',
+                    minimumFractionDigits: 0
+                }).format(price);
+            }
+
+            function formatDate(dateString) {
+                return new Date(dateString).toLocaleDateString('ro-RO', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            // ===== RENDER =====
+            return (
+                <div className="max-w-md mx-auto min-h-screen pb-24">
+                    {/* Install Banner */}
+                    {showInstallBanner && (
+                        <div className="install-banner fixed top-0 left-0 right-0 bg-gradient-to-r from-orange-500 to-pink-500 text-white p-4 shadow-lg z-50">
+                            <div className="max-w-md mx-auto flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <i data-lucide="download" className="w-6 h-6"></i>
+                                    <div>
+                                        <p className="font-bold">Instalează Malta RE PRO</p>
+                                        <p className="text-xs opacity-90">Acces rapid ca aplicație</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={handleInstallClick}
+                                        className="bg-white text-orange-600 px-4 py-2 rounded-lg font-bold text-sm"
+                                    >
+                                        Instalează
+                                    </button>
+                                    <button 
+                                        onClick={() => setShowInstallBanner(false)}
+                                        className="text-white opacity-75"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Header */}
+                    <header className="glass p-6 sticky top-0 z-40">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-pink-600 bg-clip-text text-transparent">
+                                    Malta RE PRO
+                                </h1>
+                                <p className="text-xs text-gray-500 mt-1">Professional Real Estate</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => fetchData()}
+                                    className="p-2 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition"
+                                >
+                                    <i data-lucide="refresh-cw" className="w-5 h-5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Navigation Tabs */}
+                    <nav className="glass flex border-b sticky top-[100px] z-30">
+                        {[
+                            { id: 'properties', label: '🏠 Proprietăți', icon: 'home' },
+                            { id: 'clients', label: '👥 Clienți', icon: 'users' },
+                            { id: 'daily_notes', label: '📝 Note', icon: 'file-text' }
+                        ].map(tab => (
+                            <button 
+                                key={tab.id}
+                                onClick={() => {
+                                    setActiveTab(tab.id);
+                                    setEditingItem(null);
+                                    if (tab.id === 'properties') resetPropertyForm();
+                                    else if (tab.id === 'clients') resetClientForm();
+                                    else if (tab.id === 'daily_notes') resetNoteForm();
+                                }}
+                                className={`flex-1 py-4 text-sm font-medium transition ${
+                                    activeTab === tab.id ? 'tab-active' : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                <div className="flex flex-col items-center gap-1">
+                                    <i data-lucide={tab.icon} className="w-5 h-5"></i>
+                                    <span className="text-xs">{tab.label.split(' ')[1]}</span>
+                                </div>
+                            </button>
+                        ))}
+                    </nav>
+
+                    <main className="p-4 space-y-6">
+                        {/* Forms Section */}
+                        <section className="glass p-6 rounded-3xl shadow-lg border-t-4 border-orange-500">
+                            {/* Properties Form */}
+                            {activeTab === 'properties' && (
+                                <form onSubmit={handleSaveProperty} className="space-y-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-lg font-bold text-gray-800">
+                                            {editingItem ? '✏️ Editează Proprietate' : '➕ Proprietate Nouă'}
+                                        </h2>
+                                        {editingItem && (
+                                            <button 
+                                                type="button"
+                                                onClick={cancelEdit}
+                                                className="text-sm text-gray-500 hover:text-gray-700"
+                                            >
+                                                Anulează
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <input 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition"
+                                        placeholder="Titlu proprietate"
+                                        value={propForm.title}
+                                        onChange={e => setPropForm({...propForm, title: e.target.value})}
+                                        required
+                                    />
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <select 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            value={propForm.type}
+                                            onChange={e => setPropForm({...propForm, type: e.target.value})}
+                                        >
+                                            <option>Apartment</option>
+                                            <option>House</option>
+                                            <option>Villa</option>
+                                            <option>Commercial</option>
+                                        </select>
+
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            placeholder="Locație"
+                                            value={propForm.location}
+                                            onChange={e => setPropForm({...propForm, location: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            type="number"
+                                            placeholder="Preț (€)"
+                                            value={propForm.price}
+                                            onChange={e => setPropForm({...propForm, price: e.target.value})}
+                                            required
+                                        />
+
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none text-center"
+                                            type="number"
+                                            placeholder="Beds"
+                                            min="1"
+                                            value={propForm.bedrooms}
+                                            onChange={e => setPropForm({...propForm, bedrooms: parseInt(e.target.value)})}
+                                        />
+
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none text-center"
+                                            type="number"
+                                            placeholder="Baths"
+                                            min="1"
+                                            value={propForm.bathrooms}
+                                            onChange={e => setPropForm({...propForm, bathrooms: parseInt(e.target.value)})}
+                                        />
+                                    </div>
+
+                                    <input 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                        type="number"
+                                        placeholder="Suprafață (m²)"
+                                        value={propForm.size_sqm}
+                                        onChange={e => setPropForm({...propForm, size_sqm: e.target.value})}
+                                    />
+
+                                    <textarea 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none resize-none"
+                                        placeholder="Descriere..."
+                                        rows="3"
+                                        value={propForm.description}
+                                        onChange={e => setPropForm({...propForm, description: e.target.value})}
+                                    />
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            placeholder="Nume proprietar"
+                                            value={propForm.owner_name}
+                                            onChange={e => setPropForm({...propForm, owner_name: e.target.value})}
+                                        />
+
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            type="tel"
+                                            placeholder="Contact"
+                                            value={propForm.owner_contact}
+                                            onChange={e => setPropForm({...propForm, owner_contact: e.target.value})}
+                                        />
+                                    </div>
+
+                                    <button 
+                                        type="submit"
+                                        className="w-full btn-primary text-white p-4 rounded-2xl font-bold text-lg"
+                                    >
+                                        {editingItem ? '💾 Salvează Modificările' : '➕ Adaugă Proprietate'}
+                                    </button>
+                                </form>
+                            )}
+
+                            {/* Clients Form */}
+                            {activeTab === 'clients' && (
+                                <form onSubmit={handleSaveClient} className="space-y-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-lg font-bold text-gray-800">
+                                            {editingItem ? '✏️ Editează Client' : '➕ Client Nou'}
+                                        </h2>
+                                        {editingItem && (
+                                            <button 
+                                                type="button"
+                                                onClick={cancelEdit}
+                                                className="text-sm text-gray-500 hover:text-gray-700"
+                                            >
+                                                Anulează
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <input 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                        placeholder="Nume complet"
+                                        value={clientForm.name}
+                                        onChange={e => setClientForm({...clientForm, name: e.target.value})}
+                                        required
+                                    />
+
+                                    <input 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                        type="tel"
+                                        placeholder="Telefon (ex: +356 9999 1234)"
+                                        value={clientForm.phone}
+                                        onChange={e => setClientForm({...clientForm, phone: e.target.value})}
+                                        required
+                                    />
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <select 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            value={clientForm.looking_for}
+                                            onChange={e => setClientForm({...clientForm, looking_for: e.target.value})}
+                                        >
+                                            <option>Apartment</option>
+                                            <option>House</option>
+                                            <option>Villa</option>
+                                            <option>Commercial</option>
+                                        </select>
+
+                                        <input 
+                                            className="p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                            placeholder="Locație dorită"
+                                            value={clientForm.preferred_location}
+                                            onChange={e => setClientForm({...clientForm, preferred_location: e.target.value})}
+                                            required
+                                        />
+                                    </div>
+
+                                    <input 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none"
+                                        type="number"
+                                        placeholder="Buget maxim (€)"
+                                        value={clientForm.budget}
+                                        onChange={e => setClientForm({...clientForm, budget: e.target.value})}
+                                        required
+                                    />
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs text-gray-500 ml-2">Minim dormitoare</label>
+                                            <input 
+                                                className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none text-center"
+                                                type="number"
+                                                min="1"
+                                                value={clientForm.min_bedrooms}
+                                                onChange={e => setClientForm({...clientForm, min_bedrooms: parseInt(e.target.value)})}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="text-xs text-gray-500 ml-2">Maxim dormitoare</label>
+                                            <input 
+                                                className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none text-center"
+                                                type="number"
+                                                min="1"
+                                                value={clientForm.max_bedrooms}
+                                                onChange={e => setClientForm({...clientForm, max_bedrooms: parseInt(e.target.value)})}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <textarea 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none resize-none"
+                                        placeholder="Note despre client..."
+                                        rows="3"
+                                        value={clientForm.notes}
+                                        onChange={e => setClientForm({...clientForm, notes: e.target.value})}
+                                    />
+
+                                    <button 
+                                        type="submit"
+                                        className="w-full btn-primary text-white p-4 rounded-2xl font-bold text-lg"
+                                    >
+                                        {editingItem ? '💾 Salvează Modificările' : '➕ Adaugă Client'}
+                                    </button>
+                                </form>
+                            )}
+
+                            {/* Daily Notes Form */}
+                            {activeTab === 'daily_notes' && (
+                                <form onSubmit={handleSaveNote} className="space-y-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-lg font-bold text-gray-800">
+                                            {editingItem ? '✏️ Editează Notă' : '➕ Notă Nouă'}
+                                        </h2>
+                                        {editingItem && (
+                                            <button 
+                                                type="button"
+                                                onClick={cancelEdit}
+                                                className="text-sm text-gray-500 hover:text-gray-700"
+                                            >
+                                                Anulează
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <textarea 
+                                        className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-500 outline-none resize-none"
+                                        placeholder="Scrie nota zilnică aici... (ex: Sunat client X, programat vizionare pentru Y)"
+                                        rows="5"
+                                        value={noteForm.content}
+                                        onChange={e => setNoteForm({content: e.target.value})}
+                                        required
+                                    />
+
+                                    <button 
+                                        type="submit"
+                                        className="w-full btn-primary text-white p-4 rounded-2xl font-bold text-lg"
+                                    >
+                                        {editingItem ? '💾 Salvează Modificările' : '➕ Adaugă Notă'}
+                                    </button>
+                                </form>
+                            )}
+                        </section>
+
+                        {/* Items List */}
+                        <section className="space-y-3">
+                            <div className="flex justify-between items-center px-2">
+                                <h3 className="font-bold text-gray-700">
+                                    {activeTab === 'properties' && '🏠 Lista Proprietăți'}
+                                    {activeTab === 'clients' && '👥 Lista Clienți'}
+                                    {activeTab === 'daily_notes' && '📝 Note Zilnice'}
+                                </h3>
+                                <span className="text-sm text-gray-500">
+                                    {items.length} {items.length === 1 ? 'element' : 'elemente'}
+                                </span>
+                            </div>
+
+                            {loading ? (
+                                <div className="flex justify-center items-center py-20">
+                                    <div className="loading-spinner"></div>
+                                </div>
+                            ) : items.length === 0 ? (
+                                <div className="glass p-10 rounded-2xl text-center">
+                                    <div className="text-6xl mb-4">📭</div>
+                                    <p className="text-gray-500">
+                                        {activeTab === 'properties' && 'Nu există proprietăți. Adaugă prima!'}
+                                        {activeTab === 'clients' && 'Nu există clienți. Adaugă primul!'}
+                                        {activeTab === 'daily_notes' && 'Nu există note. Scrie prima!'}
+                                    </p>
+                                </div>
+                            ) : (
+                                items.map(item => (
+                                    <div key={item.id} className="card glass p-4 rounded-2xl">
+                                        <div className="flex justify-between items-start gap-3">
+                                            <div className="flex-1">
+                                                {/* Properties Display */}
+                                                {activeTab === 'properties' && (
+                                                    <>
+                                                        <h4 className="font-bold text-gray-800 mb-1">
+                                                            {item.title}
+                                                        </h4>
+                                                        <div className="flex flex-wrap gap-2 mb-2">
+                                                            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-medium">
+                                                                {item.type}
+                                                            </span>
+                                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                                                                📍 {item.location}
+                                                            </span>
+                                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                                                                🛏️ {item.bedrooms} beds
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-lg font-bold text-orange-600">
+                                                            {formatPrice(item.price)}
+                                                        </p>
+                                                        {item.description && (
+                                                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                                                                {item.description}
+                                                            </p>
+                                                        )}
+                                                        <p className="text-xs text-gray-400 mt-2">
+                                                            {formatDate(item.created_at)}
+                                                        </p>
+                                                    </>
+                                                )}
+
+                                                {/* Clients Display */}
+                                                {activeTab === 'clients' && (
+                                                    <>
+                                                        <h4 className="font-bold text-gray-800 mb-1">
+                                                            {item.name}
+                                                        </h4>
+                                                        <p className="text-sm text-gray-600">
+                                                            📞 {item.phone}
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2 mt-2">
+                                                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                                                                Caută: {item.looking_for}
+                                                            </span>
+                                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                                                                📍 {item.preferred_location}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm font-bold text-green-600 mt-2">
+                                                            Buget: {formatPrice(item.budget)}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500">
+                                                            🛏️ {item.min_bedrooms} - {item.max_bedrooms} dormitoare
+                                                        </p>
+                                                        {item.notes && (
+                                                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                                                                💬 {item.notes}
+                                                            </p>
+                                                        )}
+                                                        <p className="text-xs text-gray-400 mt-2">
+                                                            {formatDate(item.created_at)}
+                                                        </p>
+                                                    </>
+                                                )}
+
+                                                {/* Daily Notes Display */}
+                                                {activeTab === 'daily_notes' && (
+                                                    <>
+                                                        <p className="text-sm text-gray-800 leading-relaxed">
+                                                            {item.content}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400 mt-2">
+                                                            {formatDate(item.created_at)}
+                                                        </p>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => startEdit(item)}
+                                                    className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition"
+                                                    title="Editează"
+                                                >
+                                                    <i data-lucide="edit-3" className="w-4 h-4"></i>
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
+                                                    title="Șterge"
+                                                >
+                                                    <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </section>
+                    </main>
+                </div>
+            );
+        }
+
+        // ===== RENDER APP =====
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+    <script>
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(registration => {
+                        console.log('✅ Service Worker registered:', registration);
+                        
+                        // Check for updates
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    // New version available
+                                    if (confirm('🎉 Versiune nouă disponibilă! Actualizezi acum?')) {
+                                        newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => console.error('❌ SW registration failed:', err));
+            });
+
+            // Reload when new service worker takes control
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    refreshing = true;
+                    window.location.reload();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
